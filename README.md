@@ -52,19 +52,27 @@ The app sends messages on three different MIDI channels:
 
 You can find the specific Note and CC numbers used for each control in the `MidiConstants.kt` file. This is useful for manual mapping or debugging.
 
-| Control          | MIDI Message Type | MIDI Number |
-| ---------------- | ----------------- | ----------- |
-| Play/Pause       | Note On/Off       | 20          |
-| Cue              | Note On/Off       | 21          |
-| Sync             | Note On/Off       | 22          |
-| FX 1 Toggle      | Note On/Off       | 23          |
-| Volume           | Control Change    | 7           |
-| Jog Wheel        | Control Change    | 10          |
-| Pitch            | Control Change    | 11          |
-| Crossfader       | Control Change    | 12          |
-| EQ Low           | Control Change    | 13          |
-| EQ Mid           | Control Change    | 14          |
-| EQ High          | Control Change    | 15          |
+### Note On/Off Messages
+
+| Control          | MIDI Number |
+| ---------------- | ----------- |
+| Play/Pause       | 20          |
+| Cue              | 21          |
+| Sync             | 22          |
+| FX 1 Toggle      | 23          |
+| Performance Pads | 36-43       |
+
+### Control Change (CC) Messages
+
+| Control          | MIDI Number |
+| ---------------- | ----------- |
+| Volume           | 7           |
+| Jog Wheel        | 10          |
+| Pitch            | 11          |
+| Crossfader       | 12          |
+| EQ Low           | 13          |
+| EQ Mid           | 14          |
+| EQ High          | 15          |
 
 ## Building from Source
 

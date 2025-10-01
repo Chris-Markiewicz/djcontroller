@@ -11,8 +11,9 @@ import kotlinx.coroutines.launch
 data class DeckState(
     val isPlaying: Boolean = false,
     val volume: Float = 1.0f, // 0.0 to 1.0
-    val pitch: Float = 0.0f, // -8.0 to 8.0
-    val eq: EqState = EqState()
+    val pitch: Float = 0.0f, // -20.0 to 20.0
+    val eq: EqState = EqState(),
+    val isSyncOn: Boolean = false
 )
 
 data class EqState(
@@ -42,15 +43,18 @@ class DJViewModel(private val midiController: MidiController) : ViewModel() {
 
     // --- State Update Methods ---
 
-    fun setPlayState(deckIndex: Int, isPlaying: Boolean) {
+    fun setPlayState(deckIndex: Int) {
         _uiState.update { currentState ->
+            val deckState = if (deckIndex == 0) currentState.deckA else currentState.deckB
+            val isPlaying = !deckState.isPlaying
             if (deckIndex == 0) {
                 currentState.copy(deckA = currentState.deckA.copy(isPlaying = isPlaying))
             } else {
                 currentState.copy(deckB = currentState.deckB.copy(isPlaying = isPlaying))
             }
         }
-        midiController.sendNoteOn(deckIndex, MidiConstants.PLAY_PAUSE, if (isPlaying) 127 else 0)
+        midiController.sendNoteOn(deckIndex, MidiConstants.PLAY_PAUSE, 127)
+        midiController.sendNoteOn(deckIndex, MidiConstants.PLAY_PAUSE, 0)
     }
 
     fun setCueState(deckIndex: Int) {
@@ -75,8 +79,8 @@ class DJViewModel(private val midiController: MidiController) : ViewModel() {
                 currentState.copy(deckB = currentState.deckB.copy(pitch = value))
             }
         }
-        // Map pitch (-8 to +8) to MIDI (0-127). 0 pitch = 64 MIDI.
-        val midiValue = ((value + 8f) / 16f * 127).toInt().coerceIn(0, 127)
+        // Map pitch (-20 to +20) to MIDI (0-127). 0 pitch = 64 MIDI.
+        val midiValue = ((value + 20f) / 40f * 127).toInt().coerceIn(0, 127)
         midiController.sendControlChange(deckIndex, MidiConstants.PITCH, midiValue)
     }
 
@@ -130,6 +134,25 @@ class DJViewModel(private val midiController: MidiController) : ViewModel() {
         // Pads are momentary, so send Note On then Note Off immediately
         midiController.sendNoteOn(deckIndex, padNote, 127)
         midiController.sendNoteOn(deckIndex, padNote, 0)
+    }
+
+    fun setSyncState(deckIndex: Int, isSyncOn: Boolean) {
+        _uiState.update { currentState ->
+            if (isSyncOn) {
+                currentState.copy(
+                    deckA = currentState.deckA.copy(isSyncOn = true),
+                    deckB = currentState.deckB.copy(isSyncOn = true)
+                )
+            } else {
+                if (deckIndex == 0) {
+                    currentState.copy(deckA = currentState.deckA.copy(isSyncOn = false))
+                } else {
+                    currentState.copy(deckB = currentState.deckB.copy(isSyncOn = false))
+                }
+            }
+        }
+        midiController.sendNoteOn(deckIndex, MidiConstants.SYNC, 127)
+        midiController.sendNoteOn(deckIndex, MidiConstants.SYNC, 0)
     }
 
     override fun onCleared() {

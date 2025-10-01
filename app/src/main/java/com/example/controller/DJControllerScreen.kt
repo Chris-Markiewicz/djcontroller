@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.abs
 
 // --- Main Composable Screen ---
 
@@ -63,11 +64,12 @@ fun DJControllerScreen(viewModel: DJViewModel) {
                 Deck(
                     modifier = Modifier.weight(3f),
                     deckState = uiState.deckA,
-                    onPlayToggle = { viewModel.setPlayState(0, !uiState.deckA.isPlaying) },
+                    onPlayToggle = { viewModel.setPlayState(0) },
                     onCueToggle = { viewModel.setCueState(0) },
                     onJogWheelMove = { delta -> viewModel.setJogWheel(0, delta) },
                     onPitchChange = { value -> viewModel.setPitch(0, value) },
-                    onPadClick = { padNote -> viewModel.sendPadAction(0, padNote) }
+                    onPadClick = { padNote -> viewModel.sendPadAction(0, padNote) },
+                    onSyncChange = { isOn -> viewModel.setSyncState(0, isOn) }
                 )
 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -87,11 +89,12 @@ fun DJControllerScreen(viewModel: DJViewModel) {
                 Deck(
                     modifier = Modifier.weight(3f),
                     deckState = uiState.deckB,
-                    onPlayToggle = { viewModel.setPlayState(1, !uiState.deckB.isPlaying) },
+                    onPlayToggle = { viewModel.setPlayState(1) },
                     onCueToggle = { viewModel.setCueState(1) },
                     onJogWheelMove = { delta -> viewModel.setJogWheel(1, delta) },
                     onPitchChange = { value -> viewModel.setPitch(1, value) },
-                    onPadClick = { padNote -> viewModel.sendPadAction(1, padNote) }
+                    onPadClick = { padNote -> viewModel.sendPadAction(1, padNote) },
+                    onSyncChange = { isOn -> viewModel.setSyncState(1, isOn) }
                 )
             }
         }
@@ -102,6 +105,103 @@ fun DJControllerScreen(viewModel: DJViewModel) {
 // --- UI Components ---
 
 @Composable
+fun ScrollableTempoWheel(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    valueRange: ClosedFloatingPointRange<Float> = -20f..20f
+) {
+    var currentValue by remember { mutableStateOf(value) }
+    val isDragging = remember { mutableStateOf(false) }
+
+    LaunchedEffect(value) {
+        if (!isDragging.value) {
+            currentValue = value
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+    ) {
+        Text("TEMPO", color = Color.Gray, fontSize = 10.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .height(200.dp)
+                .width(80.dp)
+                .clip(RoundedCornerShape(40.dp))
+                .background(Color(0xFF333333))
+                .pointerInput(Unit) {
+                    var dragStartOffset: Offset? = null
+                    var totalDrag = 0f
+                    detectDragGestures(
+                        onDragStart = {
+                            dragStartOffset = it
+                            totalDrag = 0f
+                            isDragging.value = true
+                        },
+                        onDragEnd = {
+                            isDragging.value = false
+                            if (abs(totalDrag) < 10) { // Tap threshold
+                                dragStartOffset?.let {
+                                    val newValue = if (it.y < size.height / 2) {
+                                        currentValue + 0.1f
+                                    } else {
+                                        currentValue - 0.1f
+                                    }
+                                    val coercedValue = newValue.coerceIn(valueRange.start, valueRange.endInclusive)
+                                    currentValue = coercedValue
+                                    onValueChange(coercedValue)
+                                }
+                            }
+                        },
+                        onDrag = { change, dragAmount ->
+                            totalDrag += dragAmount.y
+                            val newValue = currentValue - (dragAmount.y / 15f)
+                            currentValue = newValue.coerceIn(valueRange.start, valueRange.endInclusive)
+                            onValueChange(currentValue)
+                            change.consume()
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val numberOfLines = 20
+                val lineHeight = 20.dp.toPx()
+                val lineSpacing = size.height / numberOfLines
+
+                for (i in 0..numberOfLines) {
+                    val y = (i * lineSpacing)
+                    val alpha = 1f - (2f * abs(y - center.y) / size.height)
+                    drawLine(
+                        color = Color.White.copy(alpha = alpha.coerceIn(0f, 1f)),
+                        start = Offset(center.x - lineHeight / 2, y),
+                        end = Offset(center.x + lineHeight / 2, y),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                }
+
+                // Center indicator
+                drawLine(
+                    color = Color(0xFF00BCD4),
+                    start = Offset(0f, center.y),
+                    end = Offset(size.width, center.y),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+            Text(
+                text = "${String.format("%.1f", currentValue)}%",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        }
+    }
+}
+
+@Composable
 fun Deck(
     modifier: Modifier = Modifier,
     deckState: DeckState,
@@ -109,7 +209,8 @@ fun Deck(
     onCueToggle: () -> Unit,
     onJogWheelMove: (Float) -> Unit,
     onPitchChange: (Float) -> Unit,
-    onPadClick: (Int) -> Unit
+    onPadClick: (Int) -> Unit,
+    onSyncChange: (Boolean) -> Unit
 ) {
     Row(
         modifier = modifier,
@@ -128,10 +229,10 @@ fun Deck(
             ) {
                 CircularButton("CUE", onCueToggle, Color(0xFFFFA000))
                 CircularButton(
-                    if (deckState.isPlaying) "❚❚" else "►",
-                    onPlayToggle,
-                    if (deckState.isPlaying) Color(0xFFD32F2F) else Color(0xFF388E3C),
-                    isActivated = deckState.isPlaying
+                    text = "►",
+                    onClick = onPlayToggle,
+                    color = Color(0xFF388E3C),
+                    isActivated = true
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -139,12 +240,17 @@ fun Deck(
         }
         Spacer(modifier = Modifier.width(16.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("TEMPO", color = Color.Gray, fontSize = 10.sp)
-            VerticalSlider(
+            Button(
+                onClick = { onSyncChange(!deckState.isSyncOn) },
+                colors = ButtonDefaults.buttonColors(containerColor = if (deckState.isSyncOn) Color(0xFF00BCD4) else Color.Gray)
+            ) {
+                Text("Sync")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            ScrollableTempoWheel(
                 value = deckState.pitch,
                 onValueChange = onPitchChange,
-                valueRange = -8f..8f,
-                modifier = Modifier.height(250.dp)
+                valueRange = -20f..20f
             )
         }
     }
@@ -165,6 +271,18 @@ fun Mixer(
             .padding(vertical = 16.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Slider(
+            value = uiState.crossfader,
+            onValueChange = onCrossfaderChange,
+            valueRange = -1f..1f,
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = Color(0xFF555555),
+                inactiveTrackColor = Color(0xFF555555)
+            )
+        )
+        Spacer(modifier = Modifier.height(16.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -207,18 +325,6 @@ fun Mixer(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
-        Slider(
-            value = uiState.crossfader,
-            onValueChange = onCrossfaderChange,
-            valueRange = -1f..1f,
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color(0xFF555555),
-                inactiveTrackColor = Color(0xFF555555)
-            )
-        )
     }
 }
 
@@ -260,6 +366,7 @@ fun PadButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) 
 
 @Composable
 fun JogWheel(onJogWheelMove: (Float) -> Unit) {
+    var rotation by remember { mutableStateOf(0f) }
     var previousAngle by remember { mutableStateOf(0f) }
 
     Box(
@@ -291,13 +398,23 @@ fun JogWheel(onJogWheelMove: (Float) -> Unit) {
                         if (angleDiff > 180) angleDiff -= 360
                         if (angleDiff < -180) angleDiff += 360
 
-                        onJogWheelMove(angleDiff)
+                        rotation -= angleDiff
+                        onJogWheelMove(-angleDiff)
                         previousAngle = currentAngle
                     }
                 )
             },
         contentAlignment = Alignment.Center
     ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val angleRad = (rotation - 90) * (Math.PI / 180f).toFloat()
+            val lineLength = size.width / 2
+            val end = Offset(
+                x = center.x + lineLength * cos(angleRad),
+                y = center.y + lineLength * sin(angleRad)
+            )
+            drawLine(Color(0xFF00BCD4), center, end, strokeWidth = 6f)
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize(0.4f)
